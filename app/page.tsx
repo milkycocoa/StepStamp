@@ -1,7 +1,8 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
 import {
   Bell,
   Check,
@@ -15,6 +16,7 @@ import {
 
 type View = "home"
 const stampDays = ["月", "火", "水", "木", "金", "土", "日"]
+const prototypeUserId = "00000000-0000-0000-0000-000000000001"
 
 export default function HomePage() {
   const router = useRouter()
@@ -29,13 +31,27 @@ export default function HomePage() {
   const acquired = Math.min(7, Math.max(1, Math.floor(steps / 1000)))
   const progress = Math.min(100, Math.round((steps / 12000) * 100))
 
-  const saveSteps = () => {
+  const saveSteps = async () => {
     const value = Number(input.replace(/,/g, ""))
-    if (!Number.isFinite(value) || value < 0 || !Number.isInteger(value)) return
+    if (!Number.isFinite(value) || value < 0 || !Number.isInteger(value)) return false
+
+    const supabase = createClient()
+    const { error } = await supabase.from("steps").insert({
+      user_id: prototypeUserId,
+      date: new Date().toISOString().slice(0, 10),
+      step_count: value,
+    })
+
+    if (error) {
+      setStepError("歩数を保存できませんでした。もう一度お試しください")
+      return false
+    }
+
     setSteps(value)
     setInput("")
     setSaved(true)
     window.setTimeout(() => setSaved(false), 2200)
+    return true
   }
 
   return (
@@ -118,11 +134,9 @@ function HomeContent({
     setStepError("")
     setIsSubmitting(true)
 
-    saveSteps()
-
-    setTimeout(() => {
+    void saveSteps().finally(() => {
       setIsSubmitting(false)
-    }, 2200)
+    })
   }
 
   return (
