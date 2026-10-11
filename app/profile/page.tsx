@@ -1,34 +1,93 @@
 'use client'
 
 import { ArrowLeft, LogOut, UserRound } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { signOut } from '@/lib/auth'
+import { supabase } from '@/lib/supabase'
 
 export default function ProfilePage() {
   const router = useRouter()
+
   const [name, setName] = useState("")
   const [nameError, setNameError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [iconUrl, setIconUrl] = useState("")
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleSave = () => {
-    // 空欄禁止
+  useEffect(() => {
+    const fetchProfile = async () => {
+      const user = (await supabase.auth.getUser()).data.user
+      if (!user) return
+      const { data } = await supabase
+        .from('users')
+        .select('name, icon_url')
+        .eq('id', user.id)
+        .single()
+      if (data) {
+        setName(data.name ?? "")
+        setIconUrl(data.icon_url ?? "")
+      }
+    }
+    fetchProfile()
+  }, [])
+
+  // アイコン変更ボタン
+  const handleIconClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  // ファイル選択時
+  const handleIconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const user = (await supabase.auth.getUser()).data.user
+    if (!user) return
+
+    const filePath = `icons/${user.id}.png`
+
+    const { error } = await supabase.storage
+      .from('avatars')
+      .upload(filePath, file, { upsert: true })
+
+    if (error) {
+      console.error(error)
+      return
+    }
+
+    const { data } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(filePath)
+
+    setIconUrl(data.publicUrl)
+  }
+
+  const handleSave = async () => {
     if (!name.trim()) {
       setNameError("名前を入力してください")
       return
     }
 
-    // エラーなし
     setNameError("")
     setIsSubmitting(true)
 
-    // ★ 本来はここで Supabase に保存する処理を書く
-    // await updateProfile({ name })
+    const user = (await supabase.auth.getUser()).data.user
+    if (!user) return
+
+    // プロフィール保存
+    await supabase
+      .from('users')
+      .update({
+        name,
+        icon_url: iconUrl,
+      })
+      .eq('id', user.id)
 
     setTimeout(() => {
       setIsSubmitting(false)
-      router.push('/')   // 保存後に戻る
-    }, 1500)
+      router.push('/')
+    }, 1000)
   }
 
   return (
@@ -42,8 +101,25 @@ export default function ProfilePage() {
           <p className="eyebrow">アカウント設定</p>
           <h1 className="page-title">プロフィール編集</h1>
 
-          <div className="profile-avatar"><UserRound /></div>
-          <button className="avatar-change">アイコンを変更</button>
+          <div className="profile-avatar">
+            {iconUrl ? (
+              <img src={iconUrl} alt="icon" className="avatar-img" />
+            ) : (
+              <UserRound />
+            )}
+          </div>
+
+          <button className="avatar-change" onClick={handleIconClick}>
+            アイコンを変更
+          </button>
+
+          <input
+            type="file"
+            accept="image/*"
+            ref={fileInputRef}
+            style={{ display: 'none' }}
+            onChange={handleIconUpload}
+          />
 
           <label className="profile-label">名前
             <input
@@ -52,7 +128,7 @@ export default function ProfilePage() {
               className={nameError ? "input-error" : ""}
               onChange={(e) => {
                 setName(e.target.value)
-                setNameError("")   // 入力したらエラーを消す
+                setNameError("")
               }}
             />
           </label>
