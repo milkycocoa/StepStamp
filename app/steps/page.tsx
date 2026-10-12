@@ -4,6 +4,7 @@ import { ArrowLeft, Check, Pencil, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import BottomNav from '@/components/bottom-nav'
 
 type StepEntry = { date: string; step_count: number }
 
@@ -229,6 +230,7 @@ export default function StepsPage() {
             </div>
           )}
         </div>
+        <BottomNav />
       </div>
     </main>
   )

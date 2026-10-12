@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { signOut } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/client'
+import BottomNav from '@/components/bottom-nav'
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -250,6 +251,7 @@ export default function ProfilePage() {
             </>
           )}
         </div>
+        <BottomNav />
       </div>
     </main>
   )

@@ -3,36 +3,69 @@
 import { useEffect, useMemo, useState } from "react"
 import type { Dispatch, SetStateAction } from "react"
 import { useRouter } from "next/navigation"
+import Image from "next/image"
 import { createClient } from "@/lib/supabase/client"
+import { DAILY_STEP_GOAL, MAX_DAILY_STAMPS, STEPS_PER_STAMP, syncStampsForDate } from "@/lib/stamps"
 import {
-  Bell,
   Check,
   Footprints,
-  History,
   Lock,
   Pencil,
   Sparkles,
   UserRound,
 } from "lucide-react"
-
-type View = "home"
-const stampDays = ["月", "火", "水", "木", "金", "土", "日"]
+import BottomNav from "@/components/bottom-nav"
 
 export default function HomePage() {
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
-  const [view, setView] = useState<View>("home")
   const [steps, setSteps] = useState(0)
   const [isLoadingSteps, setIsLoadingSteps] = useState(true)
   const [stepLoadError, setStepLoadError] = useState("")
   const [input, setInput] = useState("")
   const [saved, setSaved] = useState(false)
-  const name = "EK"
   const [stepError, setStepError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [account, setAccount] = useState<{ name: string; iconUrl: string } | null>(null)
 
-  const acquired = Math.min(7, Math.max(1, Math.floor(steps / 1000)))
-  const progress = Math.min(100, Math.round((steps / 12000) * 100))
+  const acquired = Math.min(MAX_DAILY_STAMPS, Math.floor(steps / STEPS_PER_STAMP))
+  const progress = Math.min(100, Math.round((steps / DAILY_STEP_GOAL) * 100))
+
+  useEffect(() => {
+    let isCurrent = true
+
+    const loadAccount = async () => {
+      try {
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        if (authError) throw authError
+        if (!user) {
+          if (isCurrent) setAccount(null)
+          return
+        }
+
+        const { data, error } = await supabase
+          .from("users")
+          .select("name, icon_url")
+          .eq("id", user.id)
+          .maybeSingle()
+
+        if (error) throw error
+        if (isCurrent) {
+          setAccount({
+            name: data?.name?.trim() || user.email || "アカウント",
+            iconUrl: data?.icon_url ?? "",
+          })
+        }
+      } catch (error) {
+        console.error("アカウント情報の取得に失敗しました", error)
+      }
+    }
+
+    void loadAccount()
+    return () => {
+      isCurrent = false
+    }
+  }, [supabase])
 
   useEffect(() => {
     let isCurrent = true
@@ -139,6 +172,15 @@ export default function HomePage() {
       setInput("")
       setSaved(true)
       window.setTimeout(() => setSaved(false), 2200)
+
+      try {
+        const { error: stampError } = await syncStampsForDate(user.id, date, value, supabase)
+        if (stampError) throw stampError
+      } catch (stampError) {
+        console.error("歩数保存後のスタンプ更新に失敗しました", stampError)
+        setStepError("歩数は記録しましたが、スタンプを更新できませんでした。スタンプ画面を開いて再度お試しください")
+      }
+
       return true
     } catch {
       setStepError("歩数を保存できませんでした。もう一度お試しください")
@@ -151,11 +193,28 @@ export default function HomePage() {
       <div className="phone">
         <header className="header">
           <div className="brand"><div className="logo"><Footprints size={21} /></div><span className="brand-name">StepStamp</span></div>
-          <button className="icon-btn" aria-label="通知"><Bell size={19} /></button>
+          <button
+            className="account-button"
+            onClick={() => router.push(account ? "/profile" : "/signin")}
+            aria-label={account ? "プロフィールを編集" : "ログイン"}
+          >
+            <span className="account-avatar">
+              {account?.iconUrl ? (
+                <Image
+                  src={account.iconUrl}
+                  alt=""
+                  width={36}
+                  height={36}
+                  unoptimized
+                />
+              ) : (
+                <UserRound size={19} />
+              )}
+            </span>
+            <span className="account-name">{account?.name ?? "ログイン"}</span>
+          </button>
         </header>
-        {view === "home" && (
-          <HomeContent
-            name={name}
+        <HomeContent
             steps={steps}
             isLoadingSteps={isLoadingSteps}
             stepLoadError={stepLoadError}
@@ -170,25 +229,14 @@ export default function HomePage() {
             setStepError={setStepError}
             isSubmitting={isSubmitting}
             setIsSubmitting={setIsSubmitting}
-          />
-        )}
-        <nav className="nav" aria-label="メインナビゲーション">
-          <NavItem active={view === "home"} icon={<Footprints />} label="ホーム" onClick={() => setView("home")} />
-          <NavItem active={false} icon={<Sparkles />} label="スタンプ" onClick={() => router.push('/stamps')} />
-          <NavItem active={false} icon={<History />} label="歩数一覧" onClick={() => router.push('/steps')} />
-          <NavItem active={false} icon={<UserRound />} label="プロフィール" onClick={() => router.push('/profile')} />
-        </nav>
+        />
+        <BottomNav />
       </div>
     </main>
   )
 }
 
-function NavItem({ active, icon, label, onClick }: { active: boolean; icon: React.ReactNode; label: string; onClick: () => void }) {
-  return <button className={`nav-item ${active ? "active" : ""}`} onClick={onClick}>{icon}{label}</button>
-}
-
 type HomeContentProps = {
-  name: string
   steps: number
   isLoadingSteps: boolean
   stepLoadError: string
@@ -206,7 +254,6 @@ type HomeContentProps = {
 }
 
 function HomeContent({
-  name,
   steps,
   isLoadingSteps,
   stepLoadError,
@@ -255,7 +302,6 @@ function HomeContent({
 
   return (
     <div className="content">
-      <p className="greeting">おかえりなさい、{name}さん</p>
       <h1 className="title">今日も一歩ずつ。</h1>
 
       <section className="hero">
@@ -269,7 +315,7 @@ function HomeContent({
             <p className="goal">
               {isLoadingSteps
                 ? "歩数を確認しています"
-                : `目標 12,000歩まであと ${Math.max(0, 12000 - steps).toLocaleString()}歩`}
+                : `目標 ${DAILY_STEP_GOAL.toLocaleString()}歩まであと ${Math.max(0, DAILY_STEP_GOAL - steps).toLocaleString()}歩`}
             </p>
           </div>
 
@@ -322,18 +368,21 @@ function HomeContent({
       {/* 以下は既存のまま */}
       <div className="section-head">
         <h2>今週のスタンプラリー</h2>
-        <button className="link" onClick={() => router.push('/stamp')}>
+        <button className="link" onClick={() => router.push('/stamps')}>
           すべて見る →
         </button>
       </div>
 
+      <p className="today-stamp-count">今日のスタンプ：{acquired} / {MAX_DAILY_STAMPS}個</p>
       <StampRow acquired={acquired} />
 
       <div className="info">
         <div className="info-mark">i</div>
         <p>
-          1,000歩達成するごとにスタンプを獲得できます。<br />
-          あと <strong>{Math.max(0, 1000 - (steps % 1000)).toLocaleString()}歩</strong> で次のスタンプです。
+          {STEPS_PER_STAMP.toLocaleString()}歩達成するごとにスタンプを獲得できます。<br />
+          {acquired >= MAX_DAILY_STAMPS
+            ? <>今日の上限に達しました。</>
+            : <>あと <strong>{(STEPS_PER_STAMP - (steps % STEPS_PER_STAMP)).toLocaleString()}歩</strong> で次のスタンプです。</>}
         </p>
       </div>
 
@@ -366,4 +415,14 @@ function HomeContent({
   )
 }
 
-function StampRow({ acquired, large = false }: { acquired: number; large?: boolean }) { return <div className={`stamp-row ${large ? "stamp-grid" : ""}`}>{stampDays.map((day, index) => <div className={`stamp ${index < acquired ? "acquired" : ""}`} key={day}><div className="stamp-dot">{index < acquired ? <Sparkles /> : <Lock />}</div><span>{day}曜日</span>{index < acquired && <small>達成</small>}</div>)}</div> }
+function StampRow({ acquired }: { acquired: number }) {
+  return (
+    <div className="daily-stamp-row" aria-label={`今日のスタンプ ${acquired}個、最大${MAX_DAILY_STAMPS}個`}>
+      {Array.from({ length: MAX_DAILY_STAMPS }, (_, index) => (
+        <div className={`daily-stamp ${index < acquired ? "acquired" : ""}`} key={index}>
+          {index < acquired ? <Sparkles size={15} /> : <Lock size={13} />}
+        </div>
+      ))}
+    </div>
+  )
+}
