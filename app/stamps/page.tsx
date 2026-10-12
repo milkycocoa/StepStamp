@@ -24,7 +24,6 @@ export default function StampPage() {
 
   // TODO: 実際はSupabaseから取得する
   const acquired = 4
-  const progress = 60
 
   return (
     <main className="app-shell">

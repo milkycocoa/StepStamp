@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import type { Dispatch, SetStateAction } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import {
@@ -19,47 +20,130 @@ const stampDays = ["月", "火", "水", "木", "金", "土", "日"]
 
 export default function HomePage() {
   const router = useRouter()
+  const supabase = useMemo(() => createClient(), [])
   const [view, setView] = useState<View>("home")
-  const [steps, setSteps] = useState(8432)
+  const [steps, setSteps] = useState(0)
+  const [isLoadingSteps, setIsLoadingSteps] = useState(true)
+  const [stepLoadError, setStepLoadError] = useState("")
   const [input, setInput] = useState("")
   const [saved, setSaved] = useState(false)
-  const [name, setName] = useState("EK")
+  const name = "EK"
   const [stepError, setStepError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const acquired = Math.min(7, Math.max(1, Math.floor(steps / 1000)))
   const progress = Math.min(100, Math.round((steps / 12000) * 100))
 
+  useEffect(() => {
+    let isCurrent = true
+
+    const loadTodaySteps = async () => {
+      setIsLoadingSteps(true)
+      setStepLoadError("")
+
+      try {
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        if (authError) throw authError
+        if (!user) {
+          setSteps(0)
+          return
+        }
+
+        const now = new Date()
+        const date = [
+          now.getFullYear(),
+          String(now.getMonth() + 1).padStart(2, "0"),
+          String(now.getDate()).padStart(2, "0"),
+        ].join("-")
+        const { data, error } = await supabase
+          .from("steps")
+          .select("step_count")
+          .eq("user_id", user.id)
+          .eq("date", date)
+          .maybeSingle()
+
+        if (error) throw error
+        if (isCurrent) setSteps(data?.step_count ?? 0)
+      } catch (error) {
+        console.error("今日の歩数の取得に失敗しました", error)
+        if (isCurrent) setStepLoadError("今日の歩数を読み込めませんでした。時間をおいて再度お試しください")
+      } finally {
+        if (isCurrent) setIsLoadingSteps(false)
+      }
+    }
+
+    void loadTodaySteps()
+    return () => {
+      isCurrent = false
+    }
+  }, [supabase])
+
   const saveSteps = async () => {
     const value = Number(input.replace(/,/g, ""))
-    if (!Number.isFinite(value) || value < 0 || !Number.isInteger(value)) return false
-
-    const supabase = createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      setStepError("ログインが必要です。ログインしてからお試しください")
+    if (!Number.isFinite(value) || value <= 0 || !Number.isInteger(value)) {
+      setStepError("1以上の歩数を入力してください")
       return false
     }
 
-    const { error } = await supabase.from("steps").insert({
-      user_id: user.id,
-      date: new Date().toISOString().slice(0, 10),
-      step_count: value,
-    })
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-    if (error) {
+      if (authError) {
+        setStepError("ログイン状態を確認できませんでした。もう一度お試しください")
+        return false
+      }
+
+      if (!user) {
+        setStepError("ログインが必要です。ログインしてからお試しください")
+        return false
+      }
+
+      const now = new Date()
+      const date = [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, "0"),
+        String(now.getDate()).padStart(2, "0"),
+      ].join("-")
+      const { data: existingStep, error: lookupError } = await supabase
+        .from("steps")
+        .select("user_id")
+        .eq("user_id", user.id)
+        .eq("date", date)
+        .limit(1)
+        .maybeSingle()
+
+      if (lookupError) {
+        setStepError("歩数を保存できませんでした。もう一度お試しください")
+        return false
+      }
+
+      const saveResult = existingStep
+        ? await supabase
+            .from("steps")
+            .update({ step_count: value })
+            .eq("user_id", user.id)
+            .eq("date", date)
+        : await supabase.from("steps").insert({
+            user_id: user.id,
+            date,
+            step_count: value,
+          })
+
+      if (saveResult.error) {
+        setStepError("歩数を保存できませんでした。もう一度お試しください")
+        return false
+      }
+
+      setSteps(value)
+      setStepLoadError("")
+      setInput("")
+      setSaved(true)
+      window.setTimeout(() => setSaved(false), 2200)
+      return true
+    } catch {
       setStepError("歩数を保存できませんでした。もう一度お試しください")
       return false
     }
-
-    setSteps(value)
-    setInput("")
-    setSaved(true)
-    window.setTimeout(() => setSaved(false), 2200)
-    return true
   }
 
   return (
@@ -73,6 +157,8 @@ export default function HomePage() {
           <HomeContent
             name={name}
             steps={steps}
+            isLoadingSteps={isLoadingSteps}
+            stepLoadError={stepLoadError}
             progress={progress}
             acquired={acquired}
             input={input}
@@ -101,9 +187,29 @@ function NavItem({ active, icon, label, onClick }: { active: boolean; icon: Reac
   return <button className={`nav-item ${active ? "active" : ""}`} onClick={onClick}>{icon}{label}</button>
 }
 
+type HomeContentProps = {
+  name: string
+  steps: number
+  isLoadingSteps: boolean
+  stepLoadError: string
+  progress: number
+  acquired: number
+  input: string
+  setInput: Dispatch<SetStateAction<string>>
+  saveSteps: () => Promise<boolean>
+  saved: boolean
+  router: ReturnType<typeof useRouter>
+  stepError: string
+  setStepError: Dispatch<SetStateAction<string>>
+  isSubmitting: boolean
+  setIsSubmitting: Dispatch<SetStateAction<boolean>>
+}
+
 function HomeContent({
   name,
   steps,
+  isLoadingSteps,
+  stepLoadError,
   progress,
   acquired,
   input,
@@ -115,7 +221,7 @@ function HomeContent({
   setStepError,
   isSubmitting,
   setIsSubmitting
-}: any) {
+}: HomeContentProps) {
 
   const handleSave = () => {
     const value = Number(input.replace(/,/g, ""))
@@ -157,10 +263,13 @@ function HomeContent({
           <div>
             <p className="eyebrow">本日の歩数</p>
             <div className="step-count">
-              {steps.toLocaleString()}<span>歩</span>
+              {isLoadingSteps ? "読み込み中…" : steps.toLocaleString()}
+              {!isLoadingSteps && <span>歩</span>}
             </div>
             <p className="goal">
-              目標 12,000歩まであと {Math.max(0, 12000 - steps).toLocaleString()}歩
+              {isLoadingSteps
+                ? "歩数を確認しています"
+                : `目標 12,000歩まであと ${Math.max(0, 12000 - steps).toLocaleString()}歩`}
             </p>
           </div>
 
@@ -170,9 +279,11 @@ function HomeContent({
               background: `conic-gradient(var(--deep) 0 ${progress}%, #d7eee4 ${progress}% 100%)`
             }}
           >
-            <strong>{progress}%</strong>
+            <strong>{isLoadingSteps ? "…" : `${progress}%`}</strong>
           </div>
         </div>
+
+        {stepLoadError && <p className="error" role="alert">{stepLoadError}</p>}
 
         {/* 入力欄＋ボタン */}
         <div className="entry">
