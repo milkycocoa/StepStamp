@@ -3,6 +3,12 @@
 ## アプリ概要
 Next.jsとSupabaseを用いた歩数×スタンプラリーアプリです。
 
+## サイトイメージ
+
+
+## サイトURL
+https://stepstamp-hk.vercel.app/
+
 ## 使用技術
 - フロントエンド：Next.js 16.2.0 
 - バックエンド：Next.js 16.2.0 
