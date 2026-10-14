@@ -16,6 +16,23 @@ import {
 } from "lucide-react"
 import BottomNav from "@/components/bottom-nav"
 
+function getErrorLogMessage(error: unknown) {
+  if (error instanceof Error) return `${error.name}: ${error.message}`
+  if (typeof error !== "object" || error === null) return String(error)
+
+  const details = error as Record<string, unknown>
+  const fields = ["name", "message", "code", "details", "hint"] as const
+  const message = fields
+    .map((field) => {
+      const value = details[field]
+      return typeof value === "string" && value ? `${field}=${value}` : ""
+    })
+    .filter(Boolean)
+    .join(", ")
+
+  return message || "Unknown error object"
+}
+
 export default function HomePage() {
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -36,8 +53,9 @@ export default function HomePage() {
 
     const loadAccount = async () => {
       try {
-        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        const { data: { session }, error: authError } = await supabase.auth.getSession()
         if (authError) throw authError
+        const user = session?.user
         if (!user) {
           if (isCurrent) setAccount(null)
           return
@@ -75,10 +93,11 @@ export default function HomePage() {
       setStepLoadError("")
 
       try {
-        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        const { data: { session }, error: authError } = await supabase.auth.getSession()
         if (authError) throw authError
+        const user = session?.user
         if (!user) {
-          setSteps(0)
+          if (isCurrent) setSteps(0)
           return
         }
 
@@ -93,12 +112,13 @@ export default function HomePage() {
           .select("step_count")
           .eq("user_id", user.id)
           .eq("date", date)
+          .limit(1)
           .maybeSingle()
 
         if (error) throw error
         if (isCurrent) setSteps(data?.step_count ?? 0)
       } catch (error) {
-        console.error("今日の歩数の取得に失敗しました", error)
+        console.warn("今日の歩数の取得に失敗しました:", getErrorLogMessage(error))
         if (isCurrent) setStepLoadError("今日の歩数を読み込めませんでした。時間をおいて再度お試しください")
       } finally {
         if (isCurrent) setIsLoadingSteps(false)
@@ -119,7 +139,8 @@ export default function HomePage() {
     }
 
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { session }, error: authError } = await supabase.auth.getSession()
+      const user = session?.user
 
       if (authError) {
         setStepError("ログイン状態を確認できませんでした。もう一度お試しください")
@@ -150,17 +171,16 @@ export default function HomePage() {
         return false
       }
 
-      const saveResult = existingStep
-        ? await supabase
-            .from("steps")
-            .update({ step_count: value })
-            .eq("user_id", user.id)
-            .eq("date", date)
-        : await supabase.from("steps").insert({
-            user_id: user.id,
-            date,
-            step_count: value,
-          })
+      if (existingStep) {
+        setStepError("今日の歩数はすでに記録されています。変更する場合は歩数一覧から編集してください")
+        return false
+      }
+
+      const saveResult = await supabase.from("steps").insert({
+        user_id: user.id,
+        date,
+        step_count: value,
+      })
 
       if (saveResult.error) {
         setStepError("歩数を保存できませんでした。もう一度お試しください")

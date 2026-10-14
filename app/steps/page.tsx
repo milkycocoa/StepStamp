@@ -40,8 +40,9 @@ export default function StepsPage() {
     setErrorMessage('')
 
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { session }, error: authError } = await supabase.auth.getSession()
       if (authError) throw authError
+      const user = session?.user
       if (!user) {
         setErrorMessage('歩数一覧を見るにはログインしてください。')
         return
@@ -77,16 +78,17 @@ export default function StepsPage() {
 
   const saveEdit = async (date: string) => {
     const value = Number(editValue)
-    if (!editValue.trim() || !Number.isSafeInteger(value) || value < 0) {
-      setErrorMessage('歩数は0以上の整数で入力してください。')
+    if (!editValue.trim() || !Number.isSafeInteger(value) || value < 1) {
+      setErrorMessage('1以上の歩数を入力してください')
       return
     }
 
     setBusyDate(date)
     setErrorMessage('')
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { session }, error: authError } = await supabase.auth.getSession()
       if (authError) throw authError
+      const user = session?.user
       if (!user) {
         setErrorMessage('ログイン状態を確認できませんでした。再度ログインしてください。')
         return
@@ -122,8 +124,9 @@ export default function StepsPage() {
     setBusyDate(date)
     setErrorMessage('')
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { session }, error: authError } = await supabase.auth.getSession()
       if (authError) throw authError
+      const user = session?.user
       if (!user) {
         setErrorMessage('ログイン状態を確認できませんでした。再度ログインしてください。')
         return

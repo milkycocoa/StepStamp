@@ -84,8 +84,9 @@ export default function StampPage() {
     setErrorMessage('')
 
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { session }, error: authError } = await supabase.auth.getSession()
       if (authError) throw authError
+      const user = session?.user
       if (!user) {
         setErrorMessage('スタンプラリーを見るにはログインしてください。')
         return

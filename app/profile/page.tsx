@@ -8,6 +8,9 @@ import { signOut } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/client'
 import BottomNav from '@/components/bottom-nav'
 
+const MAX_NAME_LENGTH = 20
+const ALLOWED_ICON_TYPES = ['image/jpeg', 'image/png'] as const
+
 export default function ProfilePage() {
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -19,8 +22,10 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [isValidatingIcon, setIsValidatingIcon] = useState(false)
   const [selectedIconPreview, setSelectedIconPreview] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+  const [iconError, setIconError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
   const [nameError, setNameError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -41,8 +46,9 @@ export default function ProfilePage() {
     setErrorMessage('')
 
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { session }, error: authError } = await supabase.auth.getSession()
       if (authError) throw authError
+      const user = session?.user
       if (!user) {
         router.replace('/signin')
         return
@@ -69,26 +75,53 @@ export default function ProfilePage() {
     void loadProfile()
   }, [loadProfile])
 
-  const handleIconChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleIconChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
 
-    if (!file.type.startsWith('image/')) {
-      setErrorMessage('画像ファイルを選択してください。')
+    if (!ALLOWED_ICON_TYPES.includes(file.type as (typeof ALLOWED_ICON_TYPES)[number])) {
+      setSelectedIcon(null)
+      setIconError('アイコンはJPEGまたはPNG形式の画像を選択してください。')
       return
     }
 
-    setSelectedIcon(file)
-    setRemoveIcon(false)
+    setIconError('')
     setErrorMessage('')
     setSuccessMessage('')
+    setIsValidatingIcon(true)
+
+    try {
+      const signature = new Uint8Array(await file.slice(0, 8).arrayBuffer())
+      const isJpeg = signature[0] === 0xff && signature[1] === 0xd8 && signature[2] === 0xff
+      const isPng = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+        .every((byte, index) => signature[index] === byte)
+
+      if ((file.type === 'image/jpeg' && !isJpeg) || (file.type === 'image/png' && !isPng)) {
+        setSelectedIcon(null)
+        setIconError('選択したファイルの内容がJPEGまたはPNG形式ではありません。')
+        return
+      }
+
+      setSelectedIcon(file)
+      setRemoveIcon(false)
+    } catch (error) {
+      console.error('アイコン画像の検証に失敗しました', error)
+      setSelectedIcon(null)
+      setIconError('アイコン画像を確認できませんでした。別の画像を選択してください。')
+    } finally {
+      setIsValidatingIcon(false)
+    }
   }
 
   const handleSave = async () => {
     const trimmedName = name.trim()
     if (!trimmedName) {
       setNameError('名前を入力してください。')
+      return
+    }
+    if (trimmedName.length > MAX_NAME_LENGTH) {
+      setNameError(`名前は${MAX_NAME_LENGTH}文字以内で入力してください。`)
       return
     }
 
@@ -98,8 +131,9 @@ export default function ProfilePage() {
     setIsSubmitting(true)
 
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { session }, error: authError } = await supabase.auth.getSession()
       if (authError) throw authError
+      const user = session?.user
       if (!user) {
         router.replace('/signin')
         return
@@ -108,7 +142,7 @@ export default function ProfilePage() {
       let nextIconUrl = removeIcon ? null : iconUrl || null
       if (selectedIcon) {
         setIsUploading(true)
-        const extension = selectedIcon.name.split('.').pop()?.toLowerCase() || 'image'
+        const extension = selectedIcon.type === 'image/jpeg' ? 'jpg' : 'png'
         const filePath = `icons/${user.id}/${Date.now()}.${extension}`
         const { error: uploadError } = await supabase.storage
           .from('avatars')
@@ -191,10 +225,11 @@ export default function ProfilePage() {
               <button
                 className="avatar-change"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={isSubmitting}
+                disabled={isSubmitting || isValidatingIcon}
               >
-                <ImagePlus size={15} /> アイコンを変更
+                <ImagePlus size={15} /> {isValidatingIcon ? '画像を確認中…' : 'アイコンを変更'}
               </button>
+              {iconError && <p className="error" role="alert">{iconError}</p>}
               {(iconUrl || selectedIcon) && !removeIcon && (
                 <button
                   className="avatar-remove"
@@ -203,7 +238,7 @@ export default function ProfilePage() {
                     setRemoveIcon(true)
                     setSuccessMessage('')
                   }}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isValidatingIcon}
                 >
                   <X size={14} /> アイコンを削除
                 </button>
@@ -211,7 +246,7 @@ export default function ProfilePage() {
 
               <input
                 type="file"
-                accept="image/*"
+                accept={ALLOWED_ICON_TYPES.join(',')}
                 ref={fileInputRef}
                 className="visually-hidden"
                 onChange={handleIconChange}
@@ -220,7 +255,8 @@ export default function ProfilePage() {
               <label className="profile-label">名前
                 <input
                   value={name}
-                  maxLength={20}
+                  maxLength={MAX_NAME_LENGTH}
+                  aria-describedby="profile-name-hint"
                   className={nameError ? 'input-error' : ''}
                   onChange={(event) => {
                     setName(event.target.value)
@@ -231,6 +267,7 @@ export default function ProfilePage() {
                 />
               </label>
 
+              <p className="profile-hint" id="profile-name-hint">20文字以内</p>
               {nameError && <p className="error" role="alert">{nameError}</p>}
               {selectedIcon && <p className="profile-hint">選択したアイコンは保存時に反映されます。</p>}
               {removeIcon && <p className="profile-hint">アイコンは保存時に削除されます。</p>}
@@ -240,9 +277,9 @@ export default function ProfilePage() {
               <button
                 className="primary full-button"
                 onClick={() => void handleSave()}
-                disabled={isSubmitting || !name.trim()}
+                disabled={isSubmitting || isValidatingIcon || !name.trim()}
               >
-                {isUploading ? 'アイコンをアップロード中…' : isSubmitting ? '保存中…' : '保存する'}
+                {isValidatingIcon ? '画像を確認中…' : isUploading ? 'アイコンをアップロード中…' : isSubmitting ? '保存中…' : '保存する'}
               </button>
 
               <button className="logout" onClick={() => void handleSignOut()} disabled={isSubmitting}>
