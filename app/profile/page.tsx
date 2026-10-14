@@ -236,6 +236,7 @@ export default function ProfilePage() {
                   onClick={() => {
                     setSelectedIcon(null)
                     setRemoveIcon(true)
+                    setIconError('')
                     setSuccessMessage('')
                   }}
                   disabled={isSubmitting || isValidatingIcon}
@@ -255,7 +256,6 @@ export default function ProfilePage() {
               <label className="profile-label">名前
                 <input
                   value={name}
-                  maxLength={MAX_NAME_LENGTH}
                   aria-describedby="profile-name-hint"
                   className={nameError ? 'input-error' : ''}
                   onChange={(event) => {
@@ -277,7 +277,7 @@ export default function ProfilePage() {
               <button
                 className="primary full-button"
                 onClick={() => void handleSave()}
-                disabled={isSubmitting || isValidatingIcon || !name.trim()}
+                disabled={isSubmitting || isValidatingIcon}
               >
                 {isValidatingIcon ? '画像を確認中…' : isUploading ? 'アイコンをアップロード中…' : isSubmitting ? '保存中…' : '保存する'}
               </button>
