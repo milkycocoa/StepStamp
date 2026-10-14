@@ -4,7 +4,7 @@
 Next.jsとSupabaseを用いた歩数×スタンプラリーアプリです。
 
 ## サイトイメージ
-
+![アプリ画面](https://github.com/milkycocoa/StepStamp/blob/5e219bccd706d95c79597b246d304ba61d7dc2b1/docs/%E3%82%A2%E3%83%97%E3%83%AA%E3%81%AE%E3%82%A4%E3%83%A1%E3%83%BC%E3%82%B8%E7%94%BB%E5%83%8F.png?raw=true)
 
 ## サイトURL
 https://stepstamp-hk.vercel.app/
