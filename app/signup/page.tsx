@@ -50,7 +50,7 @@ export default function SignUpPage() {
     if (error) {
       // ★ Supabase のエラーも赤枠に反映する
       setSubmitError(error.message)
-      setEmailError(error.message)   // ← これが赤枠の鍵
+      setEmailError(error.message)
       setIsSubmitting(false)
     } else {
       router.push('/')

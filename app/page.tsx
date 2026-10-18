@@ -36,17 +36,17 @@ function getErrorLogMessage(error: unknown) {
 export default function HomePage() {
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
-  const [steps, setSteps] = useState(0)
+  const [todayStepCount, setSteps] = useState(0)
   const [isLoadingSteps, setIsLoadingSteps] = useState(true)
   const [stepLoadError, setStepLoadError] = useState("")
-  const [input, setInput] = useState("")
+  const [stepCountInput, setInput] = useState("")
   const [saved, setSaved] = useState(false)
   const [stepError, setStepError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [account, setAccount] = useState<{ name: string; iconUrl: string } | null>(null)
 
-  const acquired = Math.min(MAX_DAILY_STAMPS, Math.floor(steps / STEPS_PER_STAMP))
-  const progress = Math.min(100, Math.round((steps / DAILY_STEP_GOAL) * 100))
+  const acquired = Math.min(MAX_DAILY_STAMPS, Math.floor(todayStepCount / STEPS_PER_STAMP))
+  const progress = Math.min(100, Math.round((todayStepCount / DAILY_STEP_GOAL) * 100))
 
   useEffect(() => {
     let isCurrent = true
@@ -108,7 +108,7 @@ export default function HomePage() {
           String(now.getDate()).padStart(2, "0"),
         ].join("-")
         const { data, error } = await supabase
-          .from("steps")
+          .from("todayStepCount")
           .select("step_count")
           .eq("user_id", user.id)
           .eq("date", date)
@@ -132,7 +132,7 @@ export default function HomePage() {
   }, [supabase])
 
   const saveSteps = async () => {
-    const value = Number(input.replace(/,/g, ""))
+    const value = Number(stepCountInput.replace(/,/g, ""))
     if (!Number.isFinite(value) || value <= 0 || !Number.isInteger(value)) {
       setStepError("1以上の歩数を入力してください")
       return false
@@ -159,7 +159,7 @@ export default function HomePage() {
         String(now.getDate()).padStart(2, "0"),
       ].join("-")
       const { data: existingStep, error: lookupError } = await supabase
-        .from("steps")
+        .from("todayStepCount")
         .select("user_id")
         .eq("user_id", user.id)
         .eq("date", date)
@@ -176,7 +176,7 @@ export default function HomePage() {
         return false
       }
 
-      const saveResult = await supabase.from("steps").insert({
+      const saveResult = await supabase.from("todayStepCount").insert({
         user_id: user.id,
         date,
         step_count: value,
@@ -235,12 +235,12 @@ export default function HomePage() {
           </button>
         </header>
         <HomeContent
-            steps={steps}
+            todayStepCount={todayStepCount}
             isLoadingSteps={isLoadingSteps}
             stepLoadError={stepLoadError}
             progress={progress}
             acquired={acquired}
-            input={input}
+            stepCountInput={stepCountInput}
             setInput={setInput}
             saveSteps={saveSteps}
             saved={saved}
@@ -257,12 +257,12 @@ export default function HomePage() {
 }
 
 type HomeContentProps = {
-  steps: number
+  todayStepCount: number
   isLoadingSteps: boolean
   stepLoadError: string
   progress: number
   acquired: number
-  input: string
+  stepCountInput: string
   setInput: Dispatch<SetStateAction<string>>
   saveSteps: () => Promise<boolean>
   saved: boolean
@@ -274,12 +274,12 @@ type HomeContentProps = {
 }
 
 function HomeContent({
-  steps,
+  todayStepCount,
   isLoadingSteps,
   stepLoadError,
   progress,
   acquired,
-  input,
+  stepCountInput,
   setInput,
   saveSteps,
   saved,
@@ -291,16 +291,16 @@ function HomeContent({
 }: HomeContentProps) {
 
   const handleSave = () => {
-    const value = Number(input.replace(/,/g, ""))
+    const value = Number(stepCountInput.replace(/,/g, ""))
 
     // 空欄
-    if (!input) {
+    if (!stepCountInput) {
       setStepError("歩数を入力してください")
       return
     }
 
     // 数字以外
-    if (!/^\d+$/.test(input)) {
+    if (!/^\d+$/.test(stepCountInput)) {
       setStepError("数字のみ入力できます")
       return
     }
@@ -329,13 +329,13 @@ function HomeContent({
           <div>
             <p className="eyebrow">本日の歩数</p>
             <div className="step-count">
-              {isLoadingSteps ? "読み込み中…" : steps.toLocaleString()}
+              {isLoadingSteps ? "読み込み中…" : todayStepCount.toLocaleString()}
               {!isLoadingSteps && <span>歩</span>}
             </div>
             <p className="goal">
               {isLoadingSteps
                 ? "歩数を確認しています"
-                : `目標 ${DAILY_STEP_GOAL.toLocaleString()}歩まであと ${Math.max(0, DAILY_STEP_GOAL - steps).toLocaleString()}歩`}
+                : `目標 ${DAILY_STEP_GOAL.toLocaleString()}歩まであと ${Math.max(0, DAILY_STEP_GOAL - todayStepCount).toLocaleString()}歩`}
             </p>
           </div>
 
@@ -355,7 +355,7 @@ function HomeContent({
         <div className="entry">
           <input
             className={stepError ? "step-input input-error" : "step-input"}
-            value={input}
+            value={stepCountInput}
             onChange={(event) => {
               setInput(event.target.value)
               setStepError("")
@@ -402,7 +402,7 @@ function HomeContent({
           {STEPS_PER_STAMP.toLocaleString()}歩達成するごとにスタンプを獲得できます。<br />
           {acquired >= MAX_DAILY_STAMPS
             ? <>今日の上限に達しました。</>
-            : <>あと <strong>{(STEPS_PER_STAMP - (steps % STEPS_PER_STAMP)).toLocaleString()}歩</strong> で次のスタンプです。</>}
+            : <>あと <strong>{(STEPS_PER_STAMP - (todayStepCount % STEPS_PER_STAMP)).toLocaleString()}歩</strong> で次のスタンプです。</>}
         </p>
       </div>
 
