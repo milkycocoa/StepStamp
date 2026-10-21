@@ -108,7 +108,7 @@ export default function HomePage() {
           String(now.getDate()).padStart(2, "0"),
         ].join("-")
         const { data, error } = await supabase
-          .from("todayStepCount")
+          .from("steps")
           .select("step_count")
           .eq("user_id", user.id)
           .eq("date", date)
@@ -159,7 +159,7 @@ export default function HomePage() {
         String(now.getDate()).padStart(2, "0"),
       ].join("-")
       const { data: existingStep, error: lookupError } = await supabase
-        .from("todayStepCount")
+        .from("steps")
         .select("user_id")
         .eq("user_id", user.id)
         .eq("date", date)
@@ -176,7 +176,7 @@ export default function HomePage() {
         return false
       }
 
-      const saveResult = await supabase.from("todayStepCount").insert({
+      const saveResult = await supabase.from("steps").insert({
         user_id: user.id,
         date,
         step_count: value,
